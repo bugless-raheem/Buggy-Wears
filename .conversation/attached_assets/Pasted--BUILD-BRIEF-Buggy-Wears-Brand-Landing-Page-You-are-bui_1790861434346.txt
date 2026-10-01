@@ -1,0 +1,334 @@
+# BUILD BRIEF: Buggy Wears Brand Landing Page
+
+You are building a **premium, immersive, scroll-driven 3D landing page** for a client's clothing brand, **Buggy Wears**. Build the whole project **from scratch** in this workspace. Read this entire document before writing any code.
+
+**First reply:** show me a short build plan (stages, in order) and list anything in this brief that is unclear. Then build **one stage at a time**, and after each stage tell me exactly what to check in the preview. Do not add features that are not in this brief.
+
+---
+
+## 1. Project summary
+
+- **What it is:** a single-page brand showcase landing page. It is **not** a shop. Do not build e-commerce, a cart, checkout, prices or accounts.
+- **Brand:** Buggy Wears (a clothing brand). Brand colour is **green**.
+- **Feeling:** quiet luxury. Dark, elegant, slow, confident, with lots of empty space. It should feel *alive* (it reacts to scroll and to the mouse or finger) but never busy or noisy. The goal is a "wow" on first load and a premium feel throughout.
+- **Audience:** fashion-aware visitors on phones first, then desktop.
+
+---
+
+## 2. Tech stack (fixed, do not change)
+
+| Purpose | Tool |
+|---|---|
+| Build tool | **Vite** (vanilla JavaScript, no React, no other framework) |
+| 3D / WebGL | **Three.js** (pin an exact version, e.g. `three@0.160.0`) |
+| Scroll animation | **GSAP** + **ScrollTrigger** |
+| Smooth scrolling | **Lenis** |
+| Post-processing | **`postprocessing`** (pmndrs). Install the version whose peer dependency matches the pinned three.js version, and verify this before using it |
+| Fonts | Google Fonts: **Cormorant Garamond** (300, 500) and **Inter** (300, 400) |
+
+Rules:
+- Use ES modules and `npm`. Keep dependencies minimal.
+- **Do not use OrbitControls** or any free-orbit camera.
+- Do not hotlink any images or assets. Everything must be local in the project.
+- Write clean, commented code. Separate concerns into modules (see section 12).
+
+---
+
+## 3. Brand and design system
+
+**Colours (define as CSS variables and reuse in JS):**
+
+| Name | Value | Use |
+|---|---|---|
+| `--bg` | `#0a0a0a` | main background |
+| `--bg-deep-green` | `#0b1a0d` | very subtle tonal background / gradients |
+| `--ivory` | `#f3efe6` | main text |
+| `--green` | `#69ff00` | **the brand accent**, used sparingly |
+| `--muted` | `rgba(243,239,230,0.65)` | secondary text |
+
+**Green usage rule:** the green is loud, so keep it rare and deliberate: the logo's bug, one highlight line, hover states, the small "Scroll" hint, the CTA button and thin rules. Never use it for large background areas or body text. Neon green on black only, never on white.
+
+**Typography:**
+- Headlines: Cormorant Garamond, weight 300, UPPERCASE, wide letter-spacing (`0.16em` to `0.2em`), fluid size with `clamp()`.
+- Body and labels: Inter, weight 300 or 400, slightly letter-spaced, `--muted` colour.
+- Small labels (section numbers like `01 / Craft`): Inter, tiny, uppercase, `0.3em` spacing.
+
+**Spacing and layout:** generous whitespace, large side padding (about `8vw`), at most one idea per screen, short copy.
+
+**Motion principles:**
+- Everything eases slowly (`power3.out`, `power2.inOut`, long durations 1 to 1.6 s). Nothing snaps or pops.
+- Scroll-linked animation uses `scrub` with smoothing (about `1.5`).
+- Honour `prefers-reduced-motion` (section 10).
+
+---
+
+## 4. The logo
+
+The logo file is at **`src/assets/logo.svg`** (I will upload it; the original file name may be `bugless-logo.svg`, so rename it to `logo.svg`). The brand name to use everywhere is **"Buggy Wears"**.
+
+**Structure of the SVG (already clean vector, ready to extrude):**
+- `viewBox="0 0 832 1248"`.
+- Group `#letter-b`, fill `#FFFFFF`: one path forming the letter **B**.
+- Group `#bug`, fill `#69FF00`: two paths forming a **bug** that sits inside the B.
+- The artwork occupies roughly x 192 to 681 and y 353 to 884 of the viewBox, so the logo has a lot of empty margin. Crop or compute bounds when displaying it as a 2D image so it is not tiny.
+
+**Where the logo is used:**
+1. **Loading screen:** the logo centred on black (see section 6).
+2. **Hero and whole page: the 3D logo** (the main wow element, details below).
+3. **Fixed navigation:** small logo, top-left, always visible.
+4. **Favicon** and Apple touch icon.
+5. **Footer.**
+6. **Social share image** (`og-image.png`, 1200x630: the logo centred on `#0a0a0a`).
+
+**3D logo implementation:**
+- Import the SVG as a string (`import logoSvg from './assets/logo.svg?raw'`) and parse with `SVGLoader` from `three/examples/jsm/loaders/SVGLoader.js`.
+- For each path, build shapes with `SVGLoader.createShapes(path)` and make an `ExtrudeGeometry`.
+- White path (the B): depth about `30`, small bevel (`bevelThickness 3`, `bevelSize 2`, `bevelSegments 3`). Material: `MeshStandardMaterial`, white, `metalness 0.9`, `roughness 0.2`, `side: DoubleSide` (**polished white metal**).
+- Green paths (the bug): depth about `40` so it sits slightly **in front of** the B (this avoids z-fighting). Material: `MeshStandardMaterial`, `#69ff00`, `emissive #69ff00`, `emissiveIntensity 0.35`, `metalness 0.3`, `roughness 0.35`, `side: DoubleSide`.
+- Put all meshes in one group. **Centre it** using a `Box3`, scale it to about **3 world units tall**, and **flip the Y axis** (SVG y points down): put the group inside a pivot with `scale.set(s, -s, s)`.
+- Lighting: use `RoomEnvironment` through `PMREMGenerator` as `scene.environment` so the metal has real reflections, plus one soft directional key light. Use `ACESFilmicToneMapping`.
+- **Entrance animation:** after the loader fades, the logo scales and fades in from slightly smaller with a slow rotation settle, and the bug's emissive intensity pulses once (a soft "wake up" glow).
+- **Never** recolour, stretch, outline or crop the logo, and keep clear space around it.
+
+---
+
+## 5. Scene, camera and scroll choreography
+
+The page is one long scroll. A single **fixed full-screen canvas** (`z-index 0`) shows the 3D scene; HTML sections scroll over it (`z-index 1`). The canvas is `aria-hidden="true"`.
+
+### 5.1 Fabric background (the cloth)
+- A large, subdivided `PlaneGeometry` placed behind the logo, slightly tilted, wide enough to fill the view as the camera moves across it.
+- Custom **GLSL `ShaderMaterial`**:
+  - **Vertex shader:** displace vertices with slow simplex or fbm noise waves (soft folds like silk). Uniforms: `uTime`, `uPointer` (UV position of the cursor), `uPointerStrength`, `uScroll`.
+  - **Normals:** recompute from finite differences of the displacement so lighting follows the folds.
+  - **Fragment shader:** near-black base, soft ivory sheen on fold crests (fresnel or lambert), a very faint green rim highlight in the deepest folds. Blend `fabric-01` (the fabric photo in `src/assets/images/`) at low opacity as a woven texture. It must stay **subtle and elegant**, never bright.
+- Vertex density: about 200x200 on desktop, about 90x90 on mobile.
+- **Pointer interaction:** the cursor (desktop) or touch (mobile) creates a soft ripple in the cloth where the user moves, easing back to calm (spring or lerp). The ripple should feel like a hand brushing silk.
+
+### 5.2 Camera and logo choreography (one master GSAP timeline, `scrub: 1.5`)
+The user never free-orbits. Scroll alone moves the camera and logo:
+
+| Scroll progress | What happens |
+|---|---|
+| 0.00 to 0.12 (Hero) | Logo centred, turning very slowly. Camera at `z = 6`. |
+| 0.12 to 0.35 (Craft) | Camera glides forward and skims low over the folds. Logo drifts to the **right** and rotates about 180 degrees. |
+| 0.35 to 0.60 (Lookbook) | Logo fades down and moves away (opacity and scale down) so the photos lead. Fabric stays in the background. |
+| 0.60 to 0.82 (Values, pinned) | Logo returns centre, **pinned** in place while three value lines swap. |
+| 0.82 to 1.00 (Closing) | Camera pulls back, logo completes a turn and settles facing front. Bug glow rises (`emissiveIntensity` about 1.2). |
+
+Add a **very subtle camera parallax** following the mouse (about 0.15 rad max, eased).
+
+### 5.3 Post-processing (use the `postprocessing` library, desktop only)
+Add these **one at a time**, testing performance after each:
+1. **Bloom:** soft glow on the green bug (low intensity, luminance threshold set so only the bug and bright highlights glow).
+2. **Vignette:** subtle.
+3. **Film grain / noise:** very light, tiny opacity.
+
+Disable post-processing on mobile and low-power devices.
+
+---
+
+## 6. Page sections (the landing page)
+
+Real text must live in the **HTML** (not only in the canvas) for SEO and accessibility. Each section is a `<section class="panel">` with semantic headings. All copy comes from `src/content.js` (section 8).
+
+0. **Loader:** full-screen black. The logo (2D) fades up in the centre, a thin green progress line fills beneath it while assets load, then the loader fades out (about 1 s) and reveals the 3D scene. Minimum display about 1.2 s so it feels intentional.
+1. **Hero:** large "BUGGY WEARS" wordmark (letter-spacing animates in from wide to final), tagline underneath, and a small green "Scroll" hint with a thin animated line. The 3D logo turns slowly in the background.
+2. **Craft / materials** (`01 / Craft`): short headline and 1 to 2 lines of copy on one side; the logo is on the other. Show `fabric-02` as a small framed detail image with a slow clip-path reveal.
+3. **Lookbook** (`02 / Lookbook`): the 5 `look-0X` images. **Desktop:** pinned **horizontal scroll** gallery with parallax inside each frame and a title and caption per image. **Mobile:** a simple vertical stack with a fade and rise reveal. Frames have a subtle hover effect (slow scale, thin green outline fading in).
+4. **Values, pinned** (`03 / Values`): the logo stays pinned centre while **three short value lines** swap in and out as you scroll (for example "Crafted", "Considered", "Confident", using placeholders from `content.js`).
+5. **Closing / contact** (`04 / Contact`): a large closing line, one **"Get in touch"** button (`mailto:`), and links to Instagram and email. The button has a gentle "magnetic" hover on desktop and a green accent on hover.
+6. **Footer:** small logo, copyright line, social links, "Back to top" link.
+
+**Extra premium touches (build these, keep them subtle):**
+- **Custom cursor** on desktop only: a small ivory dot with a larger trailing ring that grows over links and the lookbook. Hide it on touch devices.
+- **Scroll progress:** a very thin green line at the top edge showing page progress.
+- **Headline reveals:** split headings by line or word and animate each in with a slow rise and fade when they enter the viewport.
+- **Section numbers and labels** as described in section 3.
+
+---
+
+## 7. Images (placeholders)
+
+I will upload 7 placeholder photos from Unsplash into **`src/assets/images/`**:
+
+- `look-01` to `look-05`: lookbook shots, portrait orientation (use in the Lookbook section).
+- `fabric-01`, `fabric-02`: fabric and detail close-ups (`fabric-01` is the cloth shader texture, `fabric-02` is the Craft section detail).
+
+They may be `.jpg` or `.png`. Requirements:
+- **Convert them to optimized WebP** at sensible sizes (for example max 2000 px on the long side, quality about 80) using a build step or script (for example `sharp`), and keep the originals out of the production bundle.
+- **Lazy-load** all lookbook images (`loading="lazy"`, `decoding="async"`, with `width` and `height` set to avoid layout shift). Use blur-up or a dark placeholder while loading.
+- Include meaningful `alt` text for each image from `content.js`.
+- Create `credits.txt` in the project root as a place for photographer credits (I will fill it in).
+- These are **placeholders**. Put this comment at the top of `content.js` and in the README: `REPLACE ALL PLACEHOLDER PHOTOS WITH THE CLIENT'S REAL PHOTOS BEFORE LAUNCH`.
+
+---
+
+## 8. Content (easy to edit)
+
+All text and image references live in one file, **`src/content.js`**, as a plain object, so the client's final copy can be dropped in without touching code. Fill it with the placeholders below and mark them clearly as placeholders.
+
+```js
+// PLACEHOLDER CONTENT: replace with the client's final copy and photos before launch.
+export default {
+  brand: "Buggy Wears",
+  tagline: "Quiet confidence, cut to last.",
+  craft: {
+    label: "01 / Craft",
+    title: "Made with intent",
+    text: "Placeholder: a short line about fabrics, cut and craft.",
+    image: { src: "fabric-02", alt: "Close-up of fabric weave" },
+  },
+  lookbook: {
+    label: "02 / Lookbook",
+    title: "The collection",
+    items: [
+      { src: "look-01", title: "Look 01", caption: "Placeholder caption.", alt: "Lookbook image 1" },
+      // ...look-02 to look-05 in the same format
+    ],
+  },
+  values: {
+    label: "03 / Values",
+    lines: ["Crafted.", "Considered.", "Confident."],
+  },
+  contact: {
+    label: "04 / Contact",
+    title: "Join the colony",
+    button: "Get in touch",
+    email: "hello@example.com",
+    instagram: "https://instagram.com/placeholder",
+  },
+};
+```
+
+---
+
+## 9. Responsive and mobile behaviour
+
+- Design **mobile first**, then enhance for desktop.
+- On small screens: scale the 3D logo down so it fits, lower the cloth vertex count, disable post-processing, disable the custom cursor, and replace the horizontal lookbook with a vertical stack.
+- No horizontal page scrolling anywhere. Respect safe areas (`env(safe-area-inset-*)`) and use `100dvh` rather than `100vh` for full-screen sections.
+- Touch: the finger creates the cloth ripple. Never block normal vertical scrolling.
+- Handle resize and orientation change (`camera.aspect`, renderer size, `ScrollTrigger.refresh()`).
+
+---
+
+## 10. Performance, fallbacks and accessibility
+
+**Performance**
+- Cap `devicePixelRatio` at 2. If the average FPS drops below about 40 for a few seconds, **automatically lower** the pixel ratio and/or disable post-processing.
+- Pause the render loop when the tab is hidden (Page Visibility API) and when the canvas is not needed.
+- Keep total page weight low (target under about 5 MB, excluding lazy-loaded images). Dispose of geometries, materials and textures that are no longer used.
+- Use Lenis plus GSAP on a single shared ticker (`lenis.on('scroll', ScrollTrigger.update)`, `gsap.ticker.add(t => lenis.raf(t*1000))`, `gsap.ticker.lagSmoothing(0)`).
+
+**Fallbacks**
+- **No WebGL:** detect support and show the static logo image with the normal HTML sections still working.
+- **`prefers-reduced-motion`:** disable smooth-scroll hijacking, the cloth animation and pointer ripple, the parallax and the heavy reveals. Show the static composition and simple fades.
+- Add a `<noscript>` message and basic content.
+
+**Accessibility**
+- Semantic landmarks (`header`, `main`, `section`, `footer`), one `h1`, logical heading order, a "Skip to content" link.
+- Text contrast AA or better (ivory on near-black passes; do not put green body text on dark).
+- Visible keyboard focus states, buttons and links reachable by keyboard.
+- `aria-hidden` on the decorative canvas; descriptive `alt` text on images.
+
+---
+
+## 11. SEO, sharing and basics
+
+- `<title>`: "Buggy Wears". Add a meta description (placeholder wording) and `lang="en"`.
+- **Open Graph and Twitter tags** with `og-image.png` (1200x630: logo on `#0a0a0a`) so link previews look good on WhatsApp and Instagram.
+- Favicon (from the logo), Apple touch icon, and a `theme-color` of `#0a0a0a`.
+- Real text content in the HTML (headings and paragraphs), not only in the canvas.
+- Optional and privacy-friendly: a clearly marked place in `index.html` to add **Plausible** or similar analytics later. Do not add any tracking now.
+
+---
+
+## 12. Project structure
+
+```
+buggy-wears/
+├─ index.html
+├─ package.json
+├─ vite.config.js
+├─ README.md
+├─ credits.txt
+├─ .gitignore
+├─ public/
+│  ├─ og-image.png
+│  └─ favicon.svg
+└─ src/
+   ├─ main.js            (entry: init order, loader, ticker)
+   ├─ content.js         (all editable copy and image refs)
+   ├─ style.css          (variables, layout, typography)
+   ├─ assets/
+   │  ├─ logo.svg
+   │  └─ images/         (look-01..05, fabric-01..02)
+   ├─ scene/
+   │  ├─ renderer.js     (renderer, camera, environment, resize)
+   │  ├─ logo3d.js       (SVG -> extruded 3D logo)
+   │  ├─ fabric.js       (cloth mesh + shader + pointer)
+   │  ├─ shaders/        (fabric.vert.glsl, fabric.frag.glsl)
+   │  └─ post.js         (bloom, vignette, grain; desktop only)
+   └─ ui/
+      ├─ scroll.js       (Lenis + GSAP master timeline, pins)
+      ├─ reveals.js      (text and image reveals)
+      ├─ cursor.js       (custom cursor, magnetic button)
+      └─ loader.js       (loading screen)
+```
+
+---
+
+## 13. Replit setup and deployment
+
+- Configure Vite so the **Replit preview works**: in `vite.config.js` set `server: { host: '0.0.0.0', port: 5173, allowedHosts: true }`, and set the Replit run command to `npm run dev`.
+- Provide `npm run build` (production build to `dist/`) and make sure the site deploys as a **static deployment** from Replit.
+- Create a `.gitignore` (ignore `node_modules` and `dist`) and initialise Git so I can connect the project to a GitHub repository.
+- Pin dependency versions in `package.json` (no `latest`).
+- After setup, run the build once and fix any errors or warnings before moving on.
+
+---
+
+## 14. Build stages (follow this order, and pause after each)
+
+1. **Setup:** Vite project, dependencies, folder structure, fonts, CSS variables, `content.js`, working Replit preview.
+2. **Smooth scroll and layout:** Lenis, GSAP, all HTML sections with placeholder copy and text reveals, nav, footer. No 3D yet.
+3. **3D logo:** the extruded logo, lighting, entrance animation, loader, and scroll-driven camera and logo choreography.
+4. **Fabric:** the cloth shader, pointer ripple, and the camera path across it.
+5. **Lookbook:** images optimized to WebP, the horizontal pinned gallery (desktop) and vertical stack (mobile), hover effects.
+6. **Pinned values section and closing section:** the logo pin, the value swaps, the CTA and contact links.
+7. **Polish:** custom cursor, magnetic button, scroll progress line, then post-processing (bloom, vignette, grain), added **one at a time**.
+8. **Performance, fallbacks and accessibility:** adaptive quality, mobile mode, WebGL fallback, reduced motion, SEO tags, OG image.
+9. **Docs and handoff:** README (how to run, edit copy in `content.js`, swap images, rebuild and deploy), final build check.
+
+After each stage, tell me what to test, and wait for my feedback before moving on.
+
+---
+
+## 15. Acceptance checklist (the job is done when all of these are true)
+
+- [ ] Loads with a logo loader, then reveals a 3D scene with no console errors.
+- [ ] The 3D logo shows a white metal B and a glowing green bug, centred, correctly oriented (not mirrored), with no flickering faces.
+- [ ] Scroll smoothly moves the camera and logo through all five choreography stages.
+- [ ] The cloth moves slowly, reacts to mouse and touch, and looks elegant, not noisy.
+- [ ] All sections from section 6 exist, with copy coming from `content.js`.
+- [ ] The lookbook works on desktop (horizontal pin) and mobile (vertical stack).
+- [ ] Runs smoothly on a mid-range phone, with automatic quality reduction if FPS drops.
+- [ ] Works with WebGL off and with reduced motion on.
+- [ ] No horizontal scrollbar at any width from 320 px up.
+- [ ] Lighthouse accessibility and SEO scores are high; OG preview image works.
+- [ ] `npm run build` succeeds and the site deploys from Replit.
+- [ ] README explains how to edit text and images, and every placeholder is clearly marked.
+
+---
+
+## 16. Do NOT
+
+- Do not switch frameworks or add React, Next.js or other large libraries.
+- Do not add e-commerce, accounts, forms with a backend, or tracking.
+- Do not use OrbitControls or free camera orbiting.
+- Do not hotlink external images or assets.
+- Do not use green for large areas or body text.
+- Do not add effects, pages or features that are not listed here.
+- Do not leave dead code, unused dependencies, or console errors.
+- Do not use any 3D garment models in this version.

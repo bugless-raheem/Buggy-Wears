@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Buggy Wears"
+description = "A premium, mobile-first landing page for Buggy Wears, centered on scroll-reactive WebGL fabric and fashion lookbook imagery."
+version = "1.0.0"
+id = "artifacts/buggy-wears"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23791
+
+[services.development]
+run = "pnpm --filter @workspace/buggy-wears run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/buggy-wears", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/buggy-wears/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23791"
+BASE_PATH = "/"

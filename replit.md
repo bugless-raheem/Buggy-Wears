@@ -1,44 +1,42 @@
-# [Project name]
+# Buggy Wears
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A premium, mobile-first brand landing page for Buggy Wears, built around a scroll-reactive WebGL fabric scene and a local fashion lookbook.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/buggy-wears run dev` — run the landing page
+- `pnpm --filter @workspace/buggy-wears run build` — build the static site
+- No backend, database, or secrets are required by this artifact.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspace, Vite, vanilla JavaScript (no React)
+- Three.js 0.160.0, GSAP 3.12.7, Lenis 1.1.18
+- postprocessing 6.36.4 (peer range includes Three.js 0.160.0)
+- Google Fonts: Cormorant Garamond and Inter
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/buggy-wears/src/content.js` — placeholder copy and local image references
+- `artifacts/buggy-wears/src/style.css` — visual tokens and responsive styling
+- `artifacts/buggy-wears/src/scene/` — upcoming WebGL fabric scene modules
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The user explicitly removed the 3D logo from scope. The 3D fabric is the interactive WebGL centerpiece; the supplied SVG may only appear as a flat logo.
+- Follow the brief's staged review process: complete one stage, provide exact preview checks, and wait for user feedback before advancing.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+A single-page brand showcase, not a shop. Do not add products, pricing, carts, checkout, accounts, backend forms, or tracking.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep the experience fun, premium, and restrained, with scroll-reactive fabric and the exact green/ivory/near-black palette in the build brief.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The supplied seven photos are fashion/lifestyle shots, not textile macro photos. The current fabric texture/detail references are temporary crops and should be replaced with real fabric photography before launch.
 
 ## Pointers
 
